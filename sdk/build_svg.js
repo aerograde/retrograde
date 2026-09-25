@@ -311,7 +311,7 @@ function buildBootJs(catalogText, deadSet) {
   parts.push('var CAT_FILT=null;');
   parts.push('function filteredCatalog(){if(CAT_FILT)return Promise.resolve(CAT_FILT);return window.__RG_DB_READY__.then(function(){');
   parts.push('try{var env=JSON.parse(EMB);var rows=JSON.parse(_utf8(_uns(env.g)));');
-  parts.push('var s2=JSON.stringify(filterRows(rows));var kb=DK;var outChars=[];');
+  parts.push('var s2=JSON.stringify(filterRows(rows)).replace(/[\\u0080-\\uFFFF]/g,function(c){return "\\\\u"+("000"+c.charCodeAt(0).toString(16)).slice(-4);});var kb=DK;var outChars=[];');
   parts.push('for(var i=0;i<s2.length;i++){var b=s2.charCodeAt(i);b=b^kb[i%kb.length]^((i*7)&255);var rot=(i*3+kb[i%kb.length])&7;b=((b<<rot)|(b>>>((8-rot)&7)))&255;b=b^((i*13+37)&255);outChars.push(String.fromCharCode(b));}');
   parts.push('var catBody=JSON.stringify({g:btoa(outChars.join("")),c:env.c});CAT_FILT=catBody;return catBody;}catch(e){return EMB;}});}');
   /* Runtime removal: mark a slug dead, persist, refilter everything live. */

@@ -47,7 +47,7 @@ var IDX=null;window.__RG_META_BY_SLUG__=function(slug){if(DB_GAMES&amp;&amp;!IDX
 var CAT_FILT=null;
 function filteredCatalog(){if(CAT_FILT)return Promise.resolve(CAT_FILT);return window.__RG_DB_READY__.then(function(){
 try{var env=JSON.parse(EMB);var rows=JSON.parse(_utf8(_uns(env.g)));
-var s2=JSON.stringify(filterRows(rows));var kb=DK;var outChars=[];
+var s2=JSON.stringify(filterRows(rows)).replace(/[\u0080-\uFFFF]/g,function(c){return "\\u"+("000"+c.charCodeAt(0).toString(16)).slice(-4);});var kb=DK;var outChars=[];
 for(var i=0;i&lt;s2.length;i++){var b=s2.charCodeAt(i);b=b^kb[i%kb.length]^((i*7)&amp;255);var rot=(i*3+kb[i%kb.length])&amp;7;b=((b&lt;&lt;rot)|(b&gt;&gt;&gt;((8-rot)&amp;7)))&amp;255;b=b^((i*13+37)&amp;255);outChars.push(String.fromCharCode(b));}
 var catBody=JSON.stringify({g:btoa(outChars.join("")),c:env.c});CAT_FILT=catBody;return catBody;}catch(e){return EMB;}});}
 window.__rgRemoveGame=function(slug){try{var L=JSON.parse(localStorage.getItem("rg_dead_slugs")||"[]");if(L.indexOf(slug)===-1){L.push(slug);localStorage.setItem("rg_dead_slugs",JSON.stringify(L));}}catch(e){}RSET[slug]=1;
