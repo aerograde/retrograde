@@ -279,12 +279,13 @@ function buildBootJs(catalogText, deadSet) {
   parts.push('function _uns(b64){var s=atob(b64),n=s.length,bytes=new Uint8Array(n),i,b,k=DK;');
   parts.push('for(i=0;i<n;i++){b=s.charCodeAt(i);b=b^((i*13+37)&255);var rot=(8-((i*3+k[i%k.length])&7))&7;b=((b<<rot)|(b>>>((8-rot)&7)))&255;b=b^k[i%k.length]^((i*7)&255);bytes[i]=b;}');
   parts.push('return bytes;}');
+  parts.push('function _utf8(u8){try{return new TextDecoder("utf-8").decode(u8);}catch(e){var out="",i=0,c,CH=String.fromCharCode;for(i=0;i<u8.length;i++){c=u8[i];if(c<128){out+=CH(c);}else if(c<224){out+=CH(((c&31)<<6)|(u8[i+1]&63));i+=1;}else if(c<240){out+=CH(((c&15)<<12)|((u8[i+1]&63)<<6)|(u8[i+2]&63));i+=2;}else{var cp=((c&7)<<18)|((u8[i+1]&63)<<12)|((u8[i+2]&63)<<6)|(u8[i+3]&63);cp-=65536;out+=CH(55296+(cp>>10),56320+(cp&1023));i+=3;}}return out;}}');
 
   /* ── light DB: expand catalog rows [slug,name,catId,hash] into game objects.
      Runs synchronously (no gzip, no pako) and also builds the only slug↔hash
      map the runtime uses. Dead hashes/slugs never enter the list. */
-  parts.push('function _loadDB(){if(DB_GAMES)return Promise.resolve();return new Promise(function(resolve){');
-  parts.push('try{var env=JSON.parse(EMB);var rows=JSON.parse(_uns(env.g));');
+  parts.push('function _loadDB(){if(DB_GAMES.length)return Promise.resolve();return new Promise(function(resolve){');
+  parts.push('try{var env=JSON.parse(EMB);var rows=JSON.parse(_utf8(_uns(env.g)));');
   parts.push('var CN={1:"Action Games",2:"Shooter Games",3:"Arcade Games",4:"Puzzle Games",5:"Sport Games",6:"Racing Games",7:"Girls Games",8:".IO Games",9:"Adventure Games",10:"Multiplayer Games",11:"Hypercasual Games"};var seen={};');
   parts.push('if(!window.__RG_SLUG_BY_HASH__)window.__RG_SLUG_BY_HASH__={};');
   parts.push('for(var i=0;i<rows.length;i++){var r=rows[i];if(!r||!r[0]||!r[3])continue;');
@@ -309,7 +310,7 @@ function buildBootJs(catalogText, deadSet) {
      own localStorage cache — which flows through this same shim. */
   parts.push('var CAT_FILT=null;');
   parts.push('function filteredCatalog(){if(CAT_FILT)return Promise.resolve(CAT_FILT);return window.__RG_DB_READY__.then(function(){');
-  parts.push('try{var env=JSON.parse(EMB);var rows=JSON.parse(_uns(env.g));');
+  parts.push('try{var env=JSON.parse(EMB);var rows=JSON.parse(_utf8(_uns(env.g)));');
   parts.push('var s2=JSON.stringify(filterRows(rows));var kb=DK;var outChars=[];');
   parts.push('for(var i=0;i<s2.length;i++){var b=s2.charCodeAt(i);b=b^kb[i%kb.length]^((i*7)&255);var rot=(i*3+kb[i%kb.length])&7;b=((b<<rot)|(b>>>((8-rot)&7)))&255;b=b^((i*13+37)&255);outChars.push(String.fromCharCode(b));}');
   parts.push('var catBody=JSON.stringify({g:btoa(outChars.join("")),c:env.c});CAT_FILT=catBody;return catBody;}catch(e){return EMB;}});}');

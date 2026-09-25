@@ -26,8 +26,9 @@ var DK=window.__RG_DATA_KEY__,DB_GAMES=[],DB_CATS=[],DB_TAGS=[];
 function _uns(b64){var s=atob(b64),n=s.length,bytes=new Uint8Array(n),i,b,k=DK;
 for(i=0;i&lt;n;i++){b=s.charCodeAt(i);b=b^((i*13+37)&amp;255);var rot=(8-((i*3+k[i%k.length])&amp;7))&amp;7;b=((b&lt;&lt;rot)|(b&gt;&gt;&gt;((8-rot)&amp;7)))&amp;255;b=b^k[i%k.length]^((i*7)&amp;255);bytes[i]=b;}
 return bytes;}
-function _loadDB(){if(DB_GAMES)return Promise.resolve();return new Promise(function(resolve){
-try{var env=JSON.parse(EMB);var rows=JSON.parse(_uns(env.g));
+function _utf8(u8){try{return new TextDecoder("utf-8").decode(u8);}catch(e){var out="",i=0,c,CH=String.fromCharCode;for(i=0;i&lt;u8.length;i++){c=u8[i];if(c&lt;128){out+=CH(c);}else if(c&lt;224){out+=CH(((c&amp;31)&lt;&lt;6)|(u8[i+1]&amp;63));i+=1;}else if(c&lt;240){out+=CH(((c&amp;15)&lt;&lt;12)|((u8[i+1]&amp;63)&lt;&lt;6)|(u8[i+2]&amp;63));i+=2;}else{var cp=((c&amp;7)&lt;&lt;18)|((u8[i+1]&amp;63)&lt;&lt;12)|((u8[i+2]&amp;63)&lt;&lt;6)|(u8[i+3]&amp;63);cp-=65536;out+=CH(55296+(cp&gt;&gt;10),56320+(cp&amp;1023));i+=3;}}return out;}}
+function _loadDB(){if(DB_GAMES.length)return Promise.resolve();return new Promise(function(resolve){
+try{var env=JSON.parse(EMB);var rows=JSON.parse(_utf8(_uns(env.g)));
 var CN={1:"Action Games",2:"Shooter Games",3:"Arcade Games",4:"Puzzle Games",5:"Sport Games",6:"Racing Games",7:"Girls Games",8:".IO Games",9:"Adventure Games",10:"Multiplayer Games",11:"Hypercasual Games"};var seen={};
 if(!window.__RG_SLUG_BY_HASH__)window.__RG_SLUG_BY_HASH__={};
 for(var i=0;i&lt;rows.length;i++){var r=rows[i];if(!r||!r[0]||!r[3])continue;
@@ -45,7 +46,7 @@ window.__RG_DB__=function(){return{games:DB_GAMES||[],categories:DB_CATS,tags:DB
 var IDX=null;window.__RG_META_BY_SLUG__=function(slug){if(DB_GAMES&amp;&amp;!IDX){IDX={};for(var i=0;i&lt;DB_GAMES.length;i++)IDX[DB_GAMES[i].slug]=DB_GAMES[i];}return IDX?IDX[slug]||null:null;};
 var CAT_FILT=null;
 function filteredCatalog(){if(CAT_FILT)return Promise.resolve(CAT_FILT);return window.__RG_DB_READY__.then(function(){
-try{var env=JSON.parse(EMB);var rows=JSON.parse(_uns(env.g));
+try{var env=JSON.parse(EMB);var rows=JSON.parse(_utf8(_uns(env.g)));
 var s2=JSON.stringify(filterRows(rows));var kb=DK;var outChars=[];
 for(var i=0;i&lt;s2.length;i++){var b=s2.charCodeAt(i);b=b^kb[i%kb.length]^((i*7)&amp;255);var rot=(i*3+kb[i%kb.length])&amp;7;b=((b&lt;&lt;rot)|(b&gt;&gt;&gt;((8-rot)&amp;7)))&amp;255;b=b^((i*13+37)&amp;255);outChars.push(String.fromCharCode(b));}
 var catBody=JSON.stringify({g:btoa(outChars.join("")),c:env.c});CAT_FILT=catBody;return catBody;}catch(e){return EMB;}});}
