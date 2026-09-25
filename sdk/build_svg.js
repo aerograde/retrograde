@@ -261,15 +261,38 @@ function buildSynthDb(catalogRows) {
          locally (zero plaintext game JSON on the wire)
       c. SVG-document DOM shims (html head/body + createElement routing)
    ════   ═══════════════════════════════════════════════════════════════════════════ */
+/* Games that hard-hang the portal (reload-loop the game frame, pinning the
+   main thread). Verified live; removed at build time like CDN-dead games —
+   the runtime watchdog catches any we haven't catalogued yet. */
+const BROKEN_GAMES = path.join(SDK, 'data', 'broken-games.json');
+function loadBrokenSet() {
+  try {
+    const j = JSON.parse(fs.readFileSync(BROKEN_GAMES, 'utf8'));
+    if (j && Array.isArray(j.hashes)) return new Set(j.hashes);
+  } catch (e) {}
+  return new Set();
+}
+
 function buildBootJs(catalogText, deadSet) {
   const keyArr = DATA_KEY.split('').map(c => c.charCodeAt(0)).join(',');
+  const broken = loadBrokenSet();
   const deadArr = deadSet ? [...deadSet] : [];
+  for (const h of broken) if (!deadArr.includes(h)) deadArr.push(h);
+  /* slugs whose runtime removal is TRUSTED (verified hang-loopers): all other
+     persisted removals are treated as spurious and rehabilitated at boot */
+  const brokenSlugMap = {};
+  try {
+    for (const r of readCatalogRows(catalogText)) {
+      if (r && r[0] && broken.has(r[3])) brokenSlugMap[r[0]] = 1;
+    }
+  } catch (e) {}
   const parts = [];
   parts.push('/* Embedded encrypted game database + catalog — no plaintext game data, no network setup */');
   parts.push('window.__RG_DATA_KEY__=[' + keyArr + '];');
   parts.push('window.__RG_EMBEDDED_CATALOG__=' + JSON.stringify(catalogText) + ';');
   /* Dead games (404 at the CDN, probed at build time) never reach the UI. */
   parts.push('window.__RG_DEAD_HASHES__=' + JSON.stringify(deadArr) + ';');
+  parts.push('window.__RG_BROKEN_SLUGS__=' + JSON.stringify(brokenSlugMap) + ';');
   parts.push('(function(){');
   parts.push('"use strict";');
   parts.push('var EMB=window.__RG_EMBEDDED_CATALOG__;');
@@ -299,7 +322,7 @@ function buildBootJs(catalogText, deadSet) {
      runtime (persisted). A game hidden on either list never renders. */
   parts.push('var DEAD=window.__RG_DEAD_HASHES__||[];');
   parts.push('var DSET={};for(var di=0;di<DEAD.length;di++)DSET[DEAD[di]]=1;');
-  parts.push('var RSET={};try{var RL=JSON.parse(localStorage.getItem("rg_dead_slugs")||"[]");for(var ri=0;ri<RL.length;ri++)RSET[RL[ri]]=1;}catch(e){}');
+  parts.push('var RSET={};try{var RL=JSON.parse(localStorage.getItem("rg_dead_slugs")||"[]");var BRK=window.__RG_BROKEN_SLUGS__||{};var keep=[];for(var ri=0;ri<RL.length;ri++){if(BRK[RL[ri]])keep.push(RL[ri]);}if(keep.length!==RL.length){try{localStorage.setItem("rg_dead_slugs",JSON.stringify(keep));}catch(e2){}}for(var ri2=0;ri2<keep.length;ri2++)RSET[keep[ri2]]=1;}catch(e){}');
   parts.push('function filterRows(rows){var out=[];for(var i=0;i<rows.length;i++){var r=rows[i];if(r&&r[3]&&DSET[r[3]])continue;if(r&&RSET[r[0]])continue;out.push(r);}return out;}');
   parts.push('window.__RG_DB_READY__=_loadDB();');
   parts.push('window.__RG_DB__=function(){return{games:DB_GAMES||[],categories:DB_CATS,tags:DB_TAGS};};');
@@ -345,7 +368,13 @@ function buildBootJs(catalogText, deadSet) {
   parts.push('  var url=(typeof input==="string")?input:(input&&input.url)?input.url:String(input||"");');
   parts.push('  if(url&&url.indexOf("games.enc.json")!==-1)return filteredCatalog().then(function(b){return mkResp(url,b);});');
   parts.push('  if(url&&RE_DB.test(url))return dbResp(url);');
-  parts.push('  if(NATIVE_FETCH)return NATIVE_FETCH(input,init);');
+  parts.push('  if(NATIVE_FETCH)return NATIVE_FETCH(input,init).then(function(resp){');
+  parts.push('    try{if(!resp||!resp.ok)return resp;var ct="";try{ct=String(resp.headers.get("content-type")||"");}catch(e){}if(!/json/i.test(ct))return resp;');
+  parts.push('    return resp.clone().text().then(function(t){');
+  parts.push('      if(!isCat(t))return resp;');
+  parts.push('      return filteredCatalog().then(function(b){var T=new TextEncoder().encode(b);return new Response(T.slice(),{status:200,statusText:"OK",headers:{"content-type":"application/json"}});});');
+  parts.push('    });}catch(e){return resp;}');
+  parts.push('  });');
   parts.push('  return Promise.reject(new Error("fetch unavailable"));');
   parts.push('};');
 
@@ -359,6 +388,29 @@ function buildBootJs(catalogText, deadSet) {
   parts.push('try{Object.defineProperty(xhr,"responseText",{value:body,configurable:true});Object.defineProperty(xhr,"response",{value:body,configurable:true});Object.defineProperty(xhr,"status",{value:200,configurable:true});Object.defineProperty(xhr,"readyState",{value:4,configurable:true});}catch(e){}');
   parts.push('try{if(xhr.onreadystatechange)xhr.onreadystatechange();if(xhr.onload)xhr.onload();}catch(e){}});};');
   parts.push('}');
+
+  /* ── catalog-source authority: the SDK races several catalog sources and
+     caches whatever answers first. Any upstream (unfiltered, possibly stale)
+     row set must never win, or dead/hang-looped games resurface and games
+     upstream dropped disappear. Two guards:
+     1. an EXISTING SDK cache is purged of dead/removed rows at boot, and
+        dropped wholesale when it holds rows beyond this build's embedded
+        snapshot (upstream moved on since the cache was written);
+     2. pass-through fetch responses shaped like the catalog envelope are
+        swapped for the filtered one, whatever URL they came from. */
+  parts.push('function isCat(t){try{var e=JSON.parse(t);if(e&&typeof e.g==="string"&&typeof e.c==="string")return true;if(Array.isArray(e)&&e.length===2&&Array.isArray(e[0])&&Array.isArray(e[1]))return true;}catch(err){}return false;}');
+  parts.push('function fixCache(){try{');
+  parts.push('var K="_rg7x_catalog_cache";var c=JSON.parse(localStorage.getItem(K)||"null");if(!c||!Array.isArray(c.games))return;');
+  /* the cache is only valid if it matches THIS build's filtered snapshot
+     (DB_GAMES filled synchronously above). Anything else came from upstream
+     and is authoritative for nothing here — drop it so the SDK refetches
+     and our shim serves the filtered embedded snapshot instead. */
+  parts.push('var ours=DB_GAMES?DB_GAMES.length:0;');
+  parts.push('if(ours>0&&c.games.length!==ours){try{localStorage.removeItem(K);}catch(e){}return;}');
+  parts.push('var before=c.games.length;var out=[];for(var i=0;i<c.games.length;i++){var r=c.games[i];if(r&&r[3]&&DSET[r[3]])continue;if(r&&r[0]&&RSET[r[0]])continue;out.push(r);}');
+  parts.push('if(out.length!==before){c.games=out;c.ts=Date.now();try{localStorage.setItem(K,JSON.stringify(c));}catch(e){}}');
+  parts.push('}catch(e){}}');
+  parts.push('fixCache();');
 
   parts.push('})();');
   return parts.join('\n');
@@ -690,6 +742,63 @@ window.addEventListener("message",function(ev){
     setBlobSrc(f,d.__rgPlay);
   }catch(e){}
 });
+/* ── hang watchdog: games that reload-loop (or otherwise pin the parent
+   main thread) make the whole portal unusable. Two detection layers:
+   1. the game document itself (server SHIELD) counts its own reloads in
+      window.name and reports __rgHang once it has re-loaded >=4 times in
+      30s — the game is removed everywhere and the modal closed;
+   2. a parent-side heartbeat watches for main-thread starvation: while a
+      game modal is open, a chain of setTimeout(,3000) must keep firing; if
+      a tick lands >9s late the game is marked dead the same way. */
+window.addEventListener("message",function(ev){
+  try{
+    var d=ev.data;
+    if(!d||!d.__rgHang)return;
+    var fh=ev.source&&ev.source.frameElement?ev.source.frameElement:null;
+    var h=String(d.__rgHash||(fh&&fh.__rgHash)||"");
+    /* destroy the looping frame FIRST — detaching it aborts its reload
+       cycle so it cannot re-spam while the modal closes */
+    try{if(fh&&fh.parentNode)fh.parentNode.removeChild(fh);}catch(e2){}
+    var slug=h&&window.__RG_SLUG_BY_HASH__?window.__RG_SLUG_BY_HASH__[h]:null;
+    try{if(window.__rgRemoveGame&&slug)window.__rgRemoveGame(slug);}catch(e2){}
+    try{var bk=document.querySelector("button.ra-modal-back");if(bk)bk.click();}catch(e2){}
+    try{rgToast("This game misbehaved and was removed.");}catch(e2){}
+  }catch(e){}
+});
+(function(){
+  function arm(){
+    if(window.__rgHangArm)return;window.__rgHangArm=true;
+    var last=Date.now();
+    var lastLate=false;
+    (function tick(){
+      var now=Date.now();
+      var late=now-last>9000;
+      /* kill only on PERSISTENT starvation (two consecutive late ticks ~
+        20s): one long stall can be a heavy compile/GC in a healthy game */
+      if(late&&lastLate){
+        var f=document.querySelector("iframe[src*='/cdn/']");
+        var h=f&&f.__rgHash?String(f.__rgHash):null;
+        if(h){
+          var slug=window.__RG_SLUG_BY_HASH__?window.__RG_SLUG_BY_HASH__[h]:null;
+          try{if(window.__rgRemoveGame&&slug)window.__rgRemoveGame(slug);}catch(e){}
+          try{var bk=document.querySelector("button.ra-modal-back");if(bk)bk.click();}catch(e){}
+          try{rgToast("This game misbehaved and was removed.");}catch(e){}
+          return;
+        }
+      }
+      lastLate=late;
+      last=Date.now();
+      setTimeout(tick,3000);
+    })();
+  }
+  try{
+    var _mo=new MutationObserver(function(){
+      if(document.querySelector("iframe[src*='/cdn/']"))arm();
+    });
+    _mo.observe(document.documentElement,{childList:true,subtree:true});
+    setInterval(function(){if(document.querySelector("iframe[src*='/cdn/']"))arm();},1000);
+  }catch(e){}
+})();
 /* Local-arcade mode: the boot probe confirmed the local server can serve
    games same-origin at /cdn/<hash>/ - play straight from there (no fetch
    chain, no engine shims; the server injects the ad shield itself). */

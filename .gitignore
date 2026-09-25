@@ -1,0 +1,52 @@
+# Source code (proprietary - never publish)
+sdk/retro.js
+sdk/retro_part1.js
+sdk/retro_part2.js
+sdk/retro_part3.js
+sdk/build.js
+sdk/build.py
+sdk/worker.js
+sdk/test.html
+
+# Data & proxy (proprietary)
+# Only the encrypted catalog is published; plaintext stays local
+sdk/data/*
+!sdk/data/games.enc.json
+!sdk/data/broken-games.json
+sdk/proxy/
+
+# Game data & assets (proprietary - 200MB+)
+/game/
+/data/
+
+# API client library (proprietary)
+retrograde.js
+
+# Root README (proprietary - contains API docs, CDN URLs, game count)
+/README.md
+
+# SDK dev/cache files
+sdk/.wrangler/
+
+# Project screenshots
+sdk-game-playing.png
+sdk-test-initial.png
+sdk-test-loaded.png
+
+# Arcade CMS (proprietary - never publish)
+v8_2_arcade cms_28k_games_gamemonetize.com/
+v8_2_arcade cms_28k_games_gamemonetize.com (1)/
+
+# npm dev files
+sdk/node_modules/
+sdk/package.json
+sdk/package-lock.json
+server.log
+
+# System files
+.DS_Store
+.claude/
+.playwright-mcp/
+.ruff_cache/
+.sisyphus/
+__pycache__/

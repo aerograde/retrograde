@@ -1,0 +1,8 @@
+{
+  "note": "Hashes of games that hard-hang the portal (reload-loop / main-thread starvation). Verified live in the portal; treated as dead at build time. Complements the CDN-404 dead-games.json list.",
+  "hashes": [
+    "7hfhiqikwaghn6987qszyx377wo53rq3",
+    "dxaoxe8xuidu01tq2upbuo2r0ouiydwb",
+    "4floo5xjxpu2sjd1zogkip7fog1ulzlx"
+  ]
+}
